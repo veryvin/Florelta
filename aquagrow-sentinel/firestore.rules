@@ -1,0 +1,193 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function orgId() { return 'aquagrow'; }
+    function signedIn() { return request.auth != null; }
+    function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function owner() { return signedIn() && profile().data.role == 'Owner' && profile().data.active == true; }
+    function staff() { return signedIn() && profile().data.role == 'Staff' && profile().data.active == true; }
+    function viewer() { return signedIn() && profile().data.role == 'Viewer' && profile().data.active == true; }
+    function sameOrg(data) { return data.orgId == orgId(); }
+
+    function validMetadata(data) {
+      return sameOrg(data)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (data.ownerId is string || data.ownerId == null);
+    }
+
+    // A user may manage only profile fields and cannot promote or disable themselves.
+    match /users/{uid} {
+      allow read: if (signedIn() && request.auth.uid == uid)
+                  || owner()
+                  || (staff() && sameOrg(resource.data));
+      allow create: if signedIn() && request.auth.uid == uid
+                    && sameOrg(request.resource.data)
+                    && request.resource.data.role in ['Owner', 'Staff', 'Viewer'];
+      allow update: if owner()
+                    || (signedIn() && request.auth.uid == uid
+                        && !request.resource.data.diff(resource.data).affectedKeys()
+                          .hasAny(['role', 'farms', 'perms', 'active', 'orgId', 'ownerId']));
+      allow delete: if owner();
+    }
+
+    match /organizations/{id} {
+      allow read: if signedIn() && sameOrg(resource.data);
+      allow create, update: if owner() && validMetadata(request.resource.data)
+                            && request.resource.data.keys().hasAll(['org', 'escMin', 'confirmHw']);
+      allow delete: if false;
+    }
+
+    match /farms/{id} {
+      allow read: if signedIn() && sameOrg(resource.data);
+      allow create: if owner() && validMetadata(request.resource.data)
+                    && request.resource.data.name is string
+                    && request.resource.data.loc is string;
+      allow update: if owner() && sameOrg(resource.data)
+                    && validMetadata(request.resource.data);
+      allow delete: if owner() && sameOrg(resource.data);
+    }
+
+    match /areas/{id} {
+      allow read: if signedIn() && sameOrg(resource.data);
+      allow create: if (owner() || staff()) && validMetadata(request.resource.data)
+                    && request.resource.data.name is string
+                    && request.resource.data.kind in ['garden', 'pond']
+                    && request.resource.data.farmId is string
+                    && request.resource.data.metrics is list;
+      allow update: if (owner() || staff()) && sameOrg(resource.data)
+                    && validMetadata(request.resource.data);
+      allow delete: if (owner() || staff()) && sameOrg(resource.data);
+    }
+
+    match /devices/{id} {
+      allow read: if signedIn() && sameOrg(resource.data);
+      allow create: if (owner() || staff()) && validMetadata(request.resource.data)
+                    && request.resource.data.code is string
+                    && request.resource.data.status in ['online', 'offline', 'disconnected'];
+      allow update: if (owner() || staff()) && sameOrg(resource.data)
+                    && validMetadata(request.resource.data);
+      allow delete: if owner() && sameOrg(resource.data);
+
+      match /commands/{commandId} {
+        allow read: if signedIn() && sameOrg(resource.data);
+        allow create: if (owner() || staff())
+                      && sameOrg(request.resource.data)
+                      && request.resource.data.type in ['on', 'off']
+                      && request.resource.data.status == 'pending'
+                      && request.resource.data.timestamp is timestamp;
+        allow update, delete: if false;
+      }
+    }
+
+    match /sensors/{id} {
+      allow read: if signedIn() && sameOrg(resource.data);
+      allow create: if (owner() || staff()) && validMetadata(request.resource.data)
+                    && request.resource.data.type in ['moisture', 'temp', 'ph', 'turb']
+                    && request.resource.data.deviceId is string
+                    && request.resource.data.areaId is string
+                    && request.resource.data.pin is number;
+      allow update: if (owner() || staff()) && validMetadata(request.resource.data);
+      allow delete: if owner() && sameOrg(resource.data);
+    }
+
+    match /readings/{id} {
+      allow read: if signedIn() && sameOrg(resource.data);
+      allow write: if false;
+    }
+
+    match /readingHourly/{id} {
+      allow read: if signedIn() && sameOrg(resource.data);
+      allow write: if false;
+    }
+
+    match /readingDaily/{id} {
+      allow read: if signedIn() && sameOrg(resource.data);
+      allow write: if false;
+    }
+
+    match /alerts/{id} {
+      allow read: if signedIn() && sameOrg(resource.data);
+      allow create: if (owner() || staff()) && validMetadata(request.resource.data)
+                    && request.resource.data.status in ['open', 'ack', 'resolved'];
+      allow update: if (owner() || staff()) && validMetadata(request.resource.data);
+      allow delete: if owner() && sameOrg(resource.data);
+
+      match /timeline/{timelineId} {
+        allow read: if signedIn() && sameOrg(resource.data);
+        allow create: if (owner() || staff()) && validMetadata(request.resource.data);
+        allow update, delete: if false;
+      }
+    }
+
+    match /notifications/{id} {
+      allow read: if signedIn() && sameOrg(resource.data)
+                  && request.auth.uid in resource.data.recipients;
+      allow create: if (owner() || staff()) && validMetadata(request.resource.data)
+                    && request.resource.data.recipients is list;
+      allow update: if signedIn() && sameOrg(resource.data)
+                    && request.auth.uid in resource.data.recipients
+                    && request.resource.data.recipients == resource.data.recipients;
+      allow delete: if owner();
+    }
+
+    match /pumps/{id} {
+      allow read: if signedIn() && sameOrg(resource.data);
+      allow create: if (owner() || staff()) && validMetadata(request.resource.data)
+                    && request.resource.data.areaId is string;
+      allow update: if (owner() || staff()) && validMetadata(request.resource.data);
+      allow delete: if owner() && sameOrg(resource.data);
+
+      match /schedules/{scheduleId} {
+        allow read: if signedIn() && sameOrg(resource.data);
+        allow create, update: if (owner() || staff()) && validMetadata(request.resource.data)
+                              && request.resource.data.time is string
+                              && request.resource.data.days is list;
+        allow delete: if owner() && sameOrg(resource.data);
+      }
+
+      match /sessions/{sessionId} {
+        allow read: if signedIn() && sameOrg(resource.data);
+        allow write: if false;
+      }
+    }
+
+    match /thresholdChanges/{id} {
+      allow read: if signedIn() && sameOrg(resource.data);
+      allow create: if (owner() || staff()) && validMetadata(request.resource.data)
+                    && request.resource.data.metric is string;
+      allow update, delete: if owner();
+    }
+
+    match /maintenance/{id} {
+      allow read: if signedIn() && sameOrg(resource.data);
+      allow create: if (owner() || staff()) && validMetadata(request.resource.data)
+                    && request.resource.data.type is string;
+      allow update: if (owner() || staff()) && validMetadata(request.resource.data);
+      allow delete: if owner();
+    }
+
+    match /activityLogs/{id} {
+      allow read: if owner() && sameOrg(resource.data);
+      allow create: if signedIn() && validMetadata(request.resource.data)
+                    && request.resource.data.message is string;
+      allow update: if false;
+      allow delete: if owner() && sameOrg(resource.data);
+    }
+
+    match /ingestHealth/{orgDoc} {
+      allow read: if owner() || staff();
+      allow write: if false;
+
+      match /rejections/{id} {
+        allow read: if owner() || staff();
+        allow write: if false;
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

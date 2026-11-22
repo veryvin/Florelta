@@ -1,0 +1,36 @@
+{
+  "name": "aquagrow-sentinel",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "emulators": "firebase emulators:start --import=.firebase/emulator-data --export-on-exit=.firebase/emulator-data",
+    "emulators:fresh": "firebase emulators:start",
+    "seed": "node scripts/seed.js",
+    "seed:web": "node --env-file=.env.local scripts/seed-web.js",
+    "simulate": "node scripts/simulate.js",
+    "seed:emulator": "powershell -NoProfile -Command \"$env:FIRESTORE_EMULATOR_HOST='127.0.0.1:8080'; $env:FIREBASE_AUTH_EMULATOR_HOST='127.0.0.1:9099'; node scripts/seed.js\"",
+    "functions:build": "npm --prefix functions run build",
+    "deploy": "npm run build && firebase deploy",
+    "cleanup:web": "node --env-file=.env.local scripts/cleanup-web.js"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "firebase": "^11.10.0",
+    "firebase-admin": "^13.6.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.9",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "write-excel-file": "^4.1.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "firebase-tools": "^15.37.0",
+    "tailwindcss": "^4.3.5",
+    "vite": "^5.4.11"
+  }
+}

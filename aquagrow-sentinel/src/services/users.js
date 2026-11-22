@@ -1,0 +1,10 @@
+import { collection, doc, getDocs, setDoc, serverTimestamp, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { ORG_ID } from './base';
+
+export async function getAll() { const s = await getDocs(collection(db, 'users')); return s.docs.map(d => ({ id: d.id, ...d.data() })); }
+export function listen(callback, error) { return onSnapshot(collection(db, 'users'), callback, error); }
+export async function getById(id) { const s = await getDocs(collection(db, 'users')); const d = s.docs.find(x => x.id === id); return d ? { id: d.id, ...d.data() } : null; }
+export async function create(id, values) { await setDoc(doc(db, 'users', id), { ...values, orgId: ORG_ID, ownerId: values.ownerId || id, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }); }
+export async function update(id, values) { await setDoc(doc(db, 'users', id), { ...values, orgId: ORG_ID, updatedAt: serverTimestamp() }, { merge: true }); }
+export async function deleteItem(id) { await deleteDoc(doc(db, 'users', id)); }
